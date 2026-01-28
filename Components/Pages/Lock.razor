@@ -1,0 +1,83 @@
+﻿@page "/lock"
+@using Journal.Services
+@inject SecurityService SecurityService
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<div class="lk-shell">
+    <div class="lk-card">
+        <div class="lk-badge">🔐</div>
+
+        <h2 class="lk-title">Locked</h2>
+        <p class="lk-sub muted">Enter your PIN to continue.</p>
+
+        @if (!string.IsNullOrEmpty(error))
+        {
+            <div class="lk-error">@error</div>
+        }
+
+        <div class="lk-field">
+            <label class="lk-label">PIN</label>
+            <input type="password"
+                   placeholder="••••••"
+                   @bind="pin"
+                   @bind:event="oninput"
+                   class="input lk-input"
+                   @onkeydown="HandleKey" />
+        </div>
+
+        <button class="lk-btn" type="button" @onclick="Unlock">
+            Unlock
+        </button>
+
+        <div class="lk-footer muted">
+            Tip: Press <b>Enter</b> to unlock.
+        </div>
+    </div>
+</div>
+
+@code {
+    string pin = "";
+    string? error;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        // Apply theme (same logic as NavMenu)
+        var theme = await JS.InvokeAsync<string>("localStorage.getItem", "theme");
+        if (theme == "dark")
+            await JS.InvokeVoidAsync("document.body.classList.add", "dark-mode");
+        else
+            await JS.InvokeVoidAsync("document.body.classList.remove", "dark-mode");
+    }
+
+    async Task Unlock()
+    {
+        error = null;
+
+        if (string.IsNullOrWhiteSpace(pin))
+        {
+            error = "PIN cannot be empty";
+            return;
+        }
+
+        if (await SecurityService.VerifyPinAsync(pin))
+        {
+            Navigation.NavigateTo("/journals", true);
+        }
+        else
+        {
+            error = "Invalid PIN";
+            pin = "";
+        }
+    }
+
+    async Task HandleKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await Unlock();
+        }
+    }
+}

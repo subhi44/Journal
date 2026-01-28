@@ -1,0 +1,73 @@
+﻿@inherits LayoutComponentBase
+@using Journal.Services
+@inject SecurityService SecurityService
+@inject NavigationManager Navigation
+
+<div class="page">
+
+    @* Sidebar only when unlocked *@
+    @if (ShowSidebar)
+    {
+        <div class="sidebar">
+            <NavMenu />
+        </div>
+    }
+
+    <main>
+        <article class="content px-4">
+            @Body
+        </article>
+    </main>
+</div>
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        await EnforceLockAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+            await EnforceLockAsync();
+    }
+
+    private async Task EnforceLockAsync()
+    {
+        var path = Navigation.ToBaseRelativePath(Navigation.Uri)
+                              .Trim('/')
+                              .ToLowerInvariant();
+
+        bool hasUser = await SecurityService.IsUserSetAsync();
+        bool isLocked = await SecurityService.IsPinRequiredAsync();
+
+        // FIRST TIME → force settings
+        if (!hasUser && path != "settings")
+        {
+            Navigation.NavigateTo("/settings", true);
+            return;
+        }
+
+        // USER EXISTS BUT LOCKED → force lock page
+        if (hasUser && isLocked && path != "lock")
+        {
+            Navigation.NavigateTo("/lock", true);
+        }
+    }
+
+    private bool ShowSidebar
+    {
+        get
+        {
+            var path = Navigation.ToBaseRelativePath(Navigation.Uri)
+                                 .Trim('/')
+                                 .ToLowerInvariant();
+
+            // Sidebar allowed on settings page
+            if (path == "settings") return true;
+
+            // Sidebar only after unlock
+            return SecurityService.IsUnlocked;
+        }
+    }
+}

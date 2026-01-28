@@ -1,0 +1,133 @@
+﻿@using Microsoft.AspNetCore.Components.Routing
+@inject IJSRuntime JS
+
+<div class="lb-nav">
+
+    <!-- Brand / Header -->
+    <div class="lb-nav-head">
+        <div class="lb-brand">
+            <div class="lb-brand-mark">LB</div>
+            <div class="lb-brand-text">
+                <div class="lb-brand-title">LogBook</div>
+                <div class="lb-brand-sub">Personal Journal</div>
+            </div>
+        </div>
+
+        <div class="lb-nav-divider"></div>
+
+        <!-- Quick links row -->
+        <div class="lb-quick">
+            <NavLink class="lb-quick-btn" href="/journals" Match="NavLinkMatch.Prefix">
+                ✍️ <span>New</span>
+            </NavLink>
+            <NavLink class="lb-quick-btn" href="/calendar" Match="NavLinkMatch.Prefix">
+                📅 <span>Calendar</span>
+            </NavLink>
+        </div>
+    </div>
+
+    <!-- Menu -->
+    <div class="lb-nav-body">
+        <div class="lb-nav-group">
+            <div class="lb-group-title">Overview</div>
+
+            <NavLink class="lb-link" href="/analytics" Match="NavLinkMatch.All">
+                <span class="lb-ic">📊</span>
+                <span class="lb-txt">Dashboard</span>
+                <span class="lb-pill">KPI</span>
+            </NavLink>
+        </div>
+
+        <div class="lb-nav-group">
+            <div class="lb-group-title">Journal</div>
+
+            <NavLink class="lb-link" href="/journals" Match="NavLinkMatch.Prefix">
+                <span class="lb-ic">📝</span>
+                <span class="lb-txt">Journal</span>
+            </NavLink>
+
+            <NavLink class="lb-link" href="/calendar" Match="NavLinkMatch.Prefix">
+                <span class="lb-ic">🗓️</span>
+                <span class="lb-txt">Journal Calendar</span>
+            </NavLink>
+
+            <NavLink class="lb-link" href="/export" Match="NavLinkMatch.Prefix">
+                <span class="lb-ic">⬇️</span>
+                <span class="lb-txt">Export PDF</span>
+            </NavLink>
+        </div>
+
+        <div class="lb-nav-group">
+            <div class="lb-group-title">Manage</div>
+
+            <NavLink class="lb-link" href="/tags" Match="NavLinkMatch.Prefix">
+                <span class="lb-ic">🏷️</span>
+                <span class="lb-txt">Tags</span>
+            </NavLink>
+
+            <NavLink class="lb-link" href="/moods" Match="NavLinkMatch.Prefix">
+                <span class="lb-ic">😊</span>
+                <span class="lb-txt">Mood</span>
+            </NavLink>
+
+            <NavLink class="lb-link" href="/settings" Match="NavLinkMatch.Prefix">
+                <span class="lb-ic">⚙️</span>
+                <span class="lb-txt">Settings</span>
+            </NavLink>
+        </div>
+    </div>
+
+    <!-- Bottom panel -->
+    <div class="lb-nav-foot">
+        <div class="lb-theme-card">
+            <div class="lb-theme-text">
+                <div class="lb-theme-title">Theme</div>
+                <div class="lb-theme-sub">@((isDarkMode) ? "Dark mode enabled" : "Light mode enabled")</div>
+            </div>
+
+            <button class="lb-theme-btn" @onclick="ToggleTheme" type="button">
+                <span class="lb-theme-emoji">@((isDarkMode) ? "☀️" : "🌙")</span>
+                <span>@(isDarkMode ? "Light Mode" : "Dark Mode")</span>
+            </button>
+        </div>
+
+        <div class="lb-footer-note">
+            <span class="muted">v1.0 • Local SQLite</span>
+        </div>
+    </div>
+</div>
+
+@code {
+    private bool isDarkMode = false;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var theme = await JS.InvokeAsync<string>("localStorage.getItem", "theme");
+            if (theme == "dark") EnableDarkMode();
+        }
+    }
+
+    private void ToggleTheme()
+    {
+        if (isDarkMode) DisableDarkMode();
+        else EnableDarkMode();
+    }
+
+    private void EnableDarkMode()
+    {
+        isDarkMode = true;
+        JS.InvokeVoidAsync("document.body.classList.add", "dark-mode");
+        JS.InvokeVoidAsync("localStorage.setItem", "theme", "dark");
+        StateHasChanged();
+    }
+
+    private void DisableDarkMode()
+    {
+        isDarkMode = false;
+        JS.InvokeVoidAsync("document.body.classList.remove", "dark-mode");
+        JS.InvokeVoidAsync("localStorage.setItem", "theme", "light");
+        StateHasChanged();
+    }
+}

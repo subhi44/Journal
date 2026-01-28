@@ -1,0 +1,175 @@
+﻿@page "/calendar"
+
+@using Journal.Models
+@using Journal.Services
+
+@inject JournalEntryService JournalEntryService
+@inject UserService UserService
+@inject NavigationManager Navigation
+
+<div class="cal-shell">
+
+    <!-- ===================== HEADER ===================== -->
+    <div class="cal-head">
+        <div class="cal-title">
+            <div class="cal-kicker">Browse entries</div>
+            <h2 class="cal-h1">Calendar</h2>
+            <div class="cal-sub muted">Tap a day with an entry to jump to Journals.</div>
+        </div>
+
+        <div class="cal-nav">
+            <button class="cal-nav-btn" type="button" @onclick="PreviousMonth">◀</button>
+            <div class="cal-month">@_currentMonth.ToString("MMMM yyyy")</div>
+            <button class="cal-nav-btn" type="button" @onclick="NextMonth">▶</button>
+        </div>
+    </div>
+
+    @if (!_loaded)
+    {
+        <div class="cal-card">
+            <p class="hint">Loading calendar...</p>
+        </div>
+    }
+    else
+    {
+        <div class="cal-card">
+
+            <div class="cal-weekdays">
+                <div class="cal-wd">Sun</div>
+                <div class="cal-wd">Mon</div>
+                <div class="cal-wd">Tue</div>
+                <div class="cal-wd">Wed</div>
+                <div class="cal-wd">Thu</div>
+                <div class="cal-wd">Fri</div>
+                <div class="cal-wd">Sat</div>
+            </div>
+
+            <div class="cal-grid">
+                @for (int cell = 0; cell < 42; cell++)
+                {
+                    int dayNumber = cell - _firstDayOffset + 1;
+
+                    if (dayNumber < 1 || dayNumber > _daysInMonth)
+                    {
+                        <div class="cal-cell cal-empty"></div>
+                    }
+                    else
+                    {
+                        var date = new DateTime(_currentMonth.Year, _currentMonth.Month, dayNumber);
+                        var key = date.Date;
+
+                        bool hasEntry = _entryDates.Contains(key);
+                        bool isToday = key == DateTime.Today.Date;
+
+                        <div class="cal-cell">
+                            <button type="button"
+                                    class="cal-day @(hasEntry ? "has-entry" : "") @(isToday ? "is-today" : "")"
+                                    @onclick="() => OnDateClick(date)">
+                                <span class="cal-num">@dayNumber</span>
+                                @if (hasEntry)
+                                {
+                                    <span class="cal-dot" aria-hidden="true"></span>
+                                }
+                            </button>
+                        </div>
+                    }
+                }
+            </div>
+
+            <div class="cal-legend">
+                <div class="cal-legend-item">
+                    <span class="cal-legend-dot"></span>
+                    <span class="muted">Entry exists</span>
+                </div>
+                <div class="cal-legend-item">
+                    <span class="cal-legend-today"></span>
+                    <span class="muted">Today</span>
+                </div>
+            </div>
+
+        </div>
+
+        @if (!string.IsNullOrEmpty(_message))
+        {
+            <div class="cal-message">@_message</div>
+        }
+    }
+</div>
+
+@code {
+    private bool _loaded;
+
+    // Single-user: we use the first user in DB
+    private int _userId;
+
+    private HashSet<DateTime> _entryDates = new();
+
+    private DateTime _currentMonth = DateTime.Today;
+    private int _daysInMonth;
+    private int _firstDayOffset;
+
+    private string? _message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await UserService.InitializeAsync();
+        await JournalEntryService.InitializeAsync();
+
+        var users = await UserService.GetUsersAsync();
+        var user = users.FirstOrDefault();
+
+        if (user == null)
+        {
+            _message = "No user found. Create a user first.";
+            _loaded = true;
+            return;
+        }
+
+        _userId = user.UserId;
+
+        await LoadCalendarAsync();
+        _loaded = true;
+    }
+
+    private async Task LoadCalendarAsync()
+    {
+        // Load only this user's entries
+        var allEntries = await JournalEntryService.GetEntriesAsync(_userId);
+
+        // NOTE: your DB stores EntryDate in UTC Date; calendar uses Date only
+        _entryDates = allEntries
+            .Select(e => e.EntryDate.Date)
+            .ToHashSet();
+
+        _daysInMonth = DateTime.DaysInMonth(_currentMonth.Year, _currentMonth.Month);
+        _firstDayOffset = (int)new DateTime(_currentMonth.Year, _currentMonth.Month, 1).DayOfWeek;
+
+        _message = null;
+    }
+
+    private async Task PreviousMonth()
+    {
+        _currentMonth = _currentMonth.AddMonths(-1);
+        await LoadCalendarAsync();
+    }
+
+    private async Task NextMonth()
+    {
+        _currentMonth = _currentMonth.AddMonths(1);
+        await LoadCalendarAsync();
+    }
+
+    private void OnDateClick(DateTime date)
+    {
+        var key = date.Date;
+
+        if (_entryDates.Contains(key))
+        {
+            Navigation.NavigateTo("/journals");
+        }
+        else
+        {
+            _message = $"No journal entry exists for {key:MMMM dd, yyyy}.";
+        }
+    }
+}

@@ -1,0 +1,116 @@
+﻿@page "/export"
+
+@using Journal.Models
+@using Journal.Services
+
+@inject UserService UserService
+@inject PdfExportService PdfExportService
+
+<div class="exp-shell">
+
+    <!-- ===================== HEADER ===================== -->
+    <div class="exp-head">
+        <div class="exp-title">
+            <div class="exp-kicker">Backup & share</div>
+            <h2 class="exp-h1">Export</h2>
+            <div class="exp-sub muted">Generate a PDF for the selected date range.</div>
+        </div>
+
+        <div class="exp-summary">
+            <div class="exp-summary-label">Selected range</div>
+            <div class="exp-summary-value">
+                @fromDate.ToString("yyyy-MM-dd") → @toDate.ToString("yyyy-MM-dd")
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================== MAIN CARD ===================== -->
+    <div class="exp-card">
+
+        <div class="exp-grid">
+            <div class="exp-field">
+                <label>From</label>
+                <input class="input" type="date" @bind="fromDate" />
+            </div>
+
+            <div class="exp-field">
+                <label>To</label>
+                <input class="input" type="date" @bind="toDate" />
+            </div>
+        </div>
+
+        <div class="exp-actions">
+            <button class="exp-btn exp-btn-primary" type="button" @onclick="Export">
+                Export PDF
+            </button>
+
+            <button class="exp-btn exp-btn-ghost" type="button" @onclick="ResetRange">
+                Reset (Last 7 days)
+            </button>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(message))
+        {
+            <div class="exp-message">@message</div>
+        }
+        else
+        {
+            <div class="exp-hint muted">
+                Tip: keep the range smaller if you have many entries (faster export).
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    DateTime fromDate = DateTime.Today.AddDays(-7);
+    DateTime toDate = DateTime.Today;
+    string? message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await UserService.InitializeAsync();
+    }
+
+    void ResetRange()
+    {
+        fromDate = DateTime.Today.AddDays(-7);
+        toDate = DateTime.Today;
+        message = null;
+    }
+
+    async Task Export()
+    {
+        message = null;
+
+        if (toDate.Date < fromDate.Date)
+        {
+            message = "Invalid range: 'To' must be after or equal to 'From'.";
+            return;
+        }
+
+        var users = await UserService.GetUsersAsync();
+        var user = users.FirstOrDefault();
+
+        if (user == null)
+        {
+            message = "No user found. Create a user first.";
+            return;
+        }
+
+        try
+        {
+            var path = await PdfExportService.ExportUserEntriesByDateRangeAsync(
+                user.UserId,
+                fromDate,
+                toDate
+            );
+
+            message = $"PDF saved to Downloads:\n{path}";
+        }
+        catch (Exception ex)
+        {
+            message = $"Export failed: {ex.Message}";
+        }
+    }
+}

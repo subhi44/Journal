@@ -1,0 +1,178 @@
+﻿@page "/settings"
+@using Journal.Services
+@inject SecurityService SecurityService
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<div class="st-shell">
+
+    <!-- ===================== HEADER ===================== -->
+    <div class="st-head">
+        <div class="st-title">
+            <div class="st-kicker">Preferences</div>
+            <h2 class="st-h1">Settings</h2>
+            <div class="st-sub muted">Theme and app lock configuration.</div>
+        </div>
+
+        <div class="st-theme-card">
+            <div class="st-theme-label">Theme</div>
+
+            <button class="st-theme-btn" type="button" @onclick="ToggleTheme">
+                <span class="st-theme-ic">@((isDarkMode) ? "🌙" : "☀️")</span>
+                <span class="st-theme-text">@((isDarkMode) ? "Dark" : "Light")</span>
+            </button>
+
+            <div class="st-theme-hint muted">
+                Stored in localStorage.
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================== SECURITY ===================== -->
+    <div class="st-grid">
+        <div class="st-card">
+            <div class="st-card-title">App Security</div>
+            <div class="st-card-sub muted">Set a username + PIN, or lock the app.</div>
+
+            @if (!string.IsNullOrEmpty(error))
+            {
+                <div class="st-error">@error</div>
+            }
+
+            @if (isUserSet)
+            {
+                <div class="st-row">
+                    <div class="st-pill">
+                        <span class="st-pill-ic">✅</span>
+                        <span>PIN already set</span>
+                    </div>
+                </div>
+
+                <button class="st-btn st-btn-danger" type="button" @onclick="LockNow">
+                    Lock Now
+                </button>
+            }
+            else
+            {
+                <div class="st-form">
+                    <div class="st-field">
+                        <label>Username</label>
+                        <input class="input"
+                               placeholder="e.g. Subhi"
+                               @bind="username" />
+                    </div>
+
+                    <div class="st-field">
+                        <label>PIN</label>
+                        <input class="input"
+                               type="password"
+                               placeholder="Set PIN (6–15 chars)"
+                               @bind="pin" />
+                    </div>
+
+                    <button class="st-btn st-btn-primary" type="button" @onclick="Save">
+                        Save PIN
+                    </button>
+                </div>
+            }
+        </div>
+
+        <div class="st-card st-help">
+            <div class="st-card-title">Notes</div>
+            <ul class="st-notes muted">
+                <li>Theme toggles by adding/removing <b>dark-mode</b> on <b>body</b>.</li>
+                <li>If a user exists and PIN is required, you are redirected to <b>/lock</b>.</li>
+                <li>You can keep this page accessible even when locked (your layout already does that).</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+@code {
+    string username = "";
+    string pin = "";
+    bool isUserSet;
+    string? error;
+
+    bool isDarkMode;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        // EXACT same logic as NavMenu
+        var theme = await JS.InvokeAsync<string>("localStorage.getItem", "theme");
+        if (theme == "dark")
+        {
+            isDarkMode = true;
+            await JS.InvokeVoidAsync("document.body.classList.add", "dark-mode");
+        }
+        else
+        {
+            isDarkMode = false;
+            await JS.InvokeVoidAsync("document.body.classList.remove", "dark-mode");
+        }
+
+        StateHasChanged();
+    }
+
+    async Task ToggleTheme()
+    {
+        if (isDarkMode)
+        {
+            isDarkMode = false;
+            await JS.InvokeVoidAsync("document.body.classList.remove", "dark-mode");
+            await JS.InvokeVoidAsync("localStorage.setItem", "theme", "light");
+        }
+        else
+        {
+            isDarkMode = true;
+            await JS.InvokeVoidAsync("document.body.classList.add", "dark-mode");
+            await JS.InvokeVoidAsync("localStorage.setItem", "theme", "dark");
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        isUserSet = await SecurityService.IsUserSetAsync();
+
+        if (isUserSet && await SecurityService.IsPinRequiredAsync())
+        {
+            Navigation.NavigateTo("/lock", true);
+            return;
+        }
+    }
+
+    async Task Save()
+    {
+        error = null;
+
+        if (string.IsNullOrWhiteSpace(username))
+        {
+            error = "Username is required.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(pin))
+        {
+            error = "PIN is required.";
+            return;
+        }
+
+        try
+        {
+            await SecurityService.SetUserAsync(username, pin);
+            Navigation.NavigateTo("/lock", true);
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+    }
+
+    void LockNow()
+    {
+        SecurityService.Lock();
+        Navigation.NavigateTo("/lock", true);
+    }
+}

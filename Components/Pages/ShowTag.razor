@@ -1,0 +1,226 @@
+﻿@page "/tags"
+@using Journal.Models
+@using Journal.Services
+@inject TagService TagService
+@inject NavigationManager Nav
+
+<div class="tg-shell">
+
+    <!-- ===================== HEADER ===================== -->
+    <div class="tg-head">
+        <div class="tg-title">
+            <div class="tg-kicker">Organize</div>
+            <h2 class="tg-h1">Tags</h2>
+            <div class="tg-sub muted">Manage custom tags. Predefined tags are locked.</div>
+        </div>
+
+        <div class="tg-actions">
+            <button class="tg-btn tg-btn-primary" type="button" @onclick="ShowAddForm">
+                <span class="tg-dot"></span>
+                New Tag
+            </button>
+        </div>
+    </div>
+
+    <!-- Anchor for scrolling to the form -->
+    <div id="tag-form-anchor"></div>
+
+    @if (showForm)
+    {
+        <div class="tg-card tg-form">
+            <div class="tg-form-head">
+                <div>
+                    <div class="tg-card-title">@((isEditing) ? "Edit tag" : "Add tag")</div>
+                    <div class="tg-card-sub muted">Custom tags only (predefined are protected).</div>
+                </div>
+                <button class="tg-btn tg-btn-ghost" type="button" @onclick="CancelForm">Close</button>
+            </div>
+
+            <div class="tg-field">
+                <label>Tag name</label>
+                <input type="text" @bind="tag.Tagname" class="input" />
+            </div>
+
+            @if (!string.IsNullOrEmpty(errorMessage))
+            {
+                <div class="tg-error">@errorMessage</div>
+            }
+
+            <div class="tg-form-actions">
+                <button class="btn-save" type="button" @onclick="SaveTag">Save</button>
+                <button class="btn-cancel" type="button" @onclick="CancelForm">Cancel</button>
+            </div>
+        </div>
+    }
+
+    <div class="tg-card">
+        @if (tags == null)
+        {
+            <p class="hint">Loading tags...</p>
+        }
+        else if (tags.Count == 0)
+        {
+            <p class="hint">No tags found. Add your first tag!</p>
+        }
+        else
+        {
+            <div class="tg-table-head">
+                <div class="tg-card-title">All tags</div>
+                <div class="tg-meta">
+                    <span class="tg-chip">Total: <b>@tags.Count</b></span>
+                    <span class="tg-chip">Predefined: <b>@tags.Count(t => t.IsPredefined)</b></span>
+                    <span class="tg-chip">Custom: <b>@tags.Count(t => !t.IsPredefined)</b></span>
+                </div>
+            </div>
+
+            <div class="tg-table-wrap">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th style="width:90px;">ID</th>
+                            <th>Tag</th>
+                            <th style="width:170px;">Type</th>
+                            <th style="width:220px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var t in tags)
+                        {
+                            <tr>
+                                <td class="tg-id">@t.TagId</td>
+                                <td class="tg-name">@t.Tagname</td>
+                                <td>
+                                    <span class="tg-badge @(t.IsPredefined ? "locked" : "custom")">
+                                        @(t.IsPredefined ? "Predefined" : "Custom")
+                                    </span>
+                                </td>
+                                <td>
+                                    @if (t.IsPredefined)
+                                    {
+                                        <span class="tg-locked muted">Locked</span>
+                                    }
+                                    else
+                                    {
+                                        <div class="tg-row-actions">
+                                            <button class="btn-edit" type="button" @onclick="() => EditTag(t)">Edit</button>
+                                            <button class="btn-delete" type="button" @onclick="() => DeleteTag(t)">Delete</button>
+                                        </div>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            @if (!string.IsNullOrEmpty(errorMessage))
+            {
+                <div class="tg-error" style="margin-top:12px;">@errorMessage</div>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    List<Tag> tags;
+    Tag tag = new Tag();
+
+    bool showForm = false;
+    bool isEditing = false;
+    string errorMessage = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await TagService.InitializeAsync();
+        await LoadTags();
+    }
+
+    async Task LoadTags()
+    {
+        // Optional: order predefined first, then custom, alphabetically
+        tags = (await TagService.GetTagsAsync())
+            .OrderByDescending(t => t.IsPredefined)
+            .ThenBy(t => t.Tagname)
+            .ToList();
+    }
+
+    void ShowAddForm()
+    {
+        tag = new Tag
+        {
+            TagId = 0,
+            Tagname = "",
+            IsPredefined = false // ✅ user-added tags are always custom
+        };
+
+        isEditing = false;
+        showForm = true;
+        errorMessage = "";
+
+        // ✅ scroll to form
+        Nav.NavigateTo("/tags#tag-form-anchor", forceLoad: false);
+    }
+
+    void EditTag(Tag t)
+    {
+        // ✅ Prevent editing predefined tags
+        if (t.IsPredefined)
+        {
+            errorMessage = "Predefined tags cannot be edited.";
+            return;
+        }
+
+        tag = new Tag
+        {
+            TagId = t.TagId,
+            Tagname = t.Tagname,
+            IsPredefined = false
+        };
+
+        isEditing = true;
+        showForm = true;
+        errorMessage = "";
+
+        // ✅ scroll to form
+        Nav.NavigateTo("/tags#tag-form-anchor", forceLoad: false);
+    }
+
+    async Task SaveTag()
+    {
+        errorMessage = "";
+
+        if (string.IsNullOrWhiteSpace(tag.Tagname))
+        {
+            errorMessage = "Tag name is required";
+            return;
+        }
+
+        // ✅ Ensure user-added is always custom (never predefined)
+        tag.IsPredefined = false;
+
+        await TagService.SaveTagAsync(tag);
+        await LoadTags();
+        CancelForm();
+    }
+
+    async Task DeleteTag(Tag t)
+    {
+        // ✅ Prevent deleting predefined tags
+        if (t.IsPredefined)
+        {
+            errorMessage = "Predefined tags cannot be deleted.";
+            return;
+        }
+
+        await TagService.DeleteTagAsync(t);
+        await LoadTags();
+    }
+
+    void CancelForm()
+    {
+        showForm = false;
+        tag = new Tag();
+        isEditing = false;
+        errorMessage = "";
+    }
+}

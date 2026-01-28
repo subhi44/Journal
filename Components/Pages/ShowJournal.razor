@@ -1,0 +1,681 @@
+﻿@page "/journals"
+
+@using Journal.Models
+@using Journal.Services
+
+@inject UserService UserService
+@inject MoodService MoodService
+@inject TagService TagService
+@inject JournalEntryService JournalEntryService
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+<div class="jrnl-shell">
+
+    <!-- ===================== HEADER ===================== -->
+    <div class="jrnl-head">
+        <div class="jrnl-title">
+            <div class="jrnl-kicker">Write & revisit</div>
+            <h2 class="jrnl-h1">Journal</h2>
+            <div class="jrnl-sub muted">Create entries, filter them fast, and edit anytime.</div>
+        </div>
+
+        <div class="jrnl-actions">
+            @if (!showForm)
+            {
+                <button class="jrnl-btn jrnl-btn-primary" type="button" @onclick="ShowAddForm">
+                    <span class="jrnl-dot"></span>
+                    New Entry
+                </button>
+            }
+        </div>
+    </div>
+
+    @if (currentUser == null)
+    {
+        <div class="jrnl-panel">
+            <p class="hint">No user found. Create a user first.</p>
+        </div>
+    }
+
+    <!-- ===================== SEARCH & FILTER ===================== -->
+    @if (!showForm)
+    {
+        <div class="jrnl-filter">
+            <div class="jrnl-filter-head">
+                <div>
+                    <div class="jrnl-panel-title">Search & Filter</div>
+                    <div class="jrnl-panel-sub muted">Filter by text, date range, mood and tags.</div>
+                </div>
+
+                <button class="jrnl-btn jrnl-btn-ghost" type="button" @onclick="ClearFilters">
+                    Clear
+                </button>
+            </div>
+
+            <div class="jrnl-filter-grid">
+                <div class="jrnl-field jrnl-field-wide">
+                    <label>Search</label>
+                    <input class="input" placeholder="Title or content..." @bind="searchText" @bind:event="oninput" />
+                </div>
+
+                <div class="jrnl-field">
+                    <label>From</label>
+                    <input type="date" class="input"
+                           @bind-value="filterFrom"
+                           @bind-value:format="yyyy-MM-dd" />
+                </div>
+
+                <div class="jrnl-field">
+                    <label>To</label>
+                    <input type="date" class="input"
+                           @bind-value="filterTo"
+                           @bind-value:format="yyyy-MM-dd" />
+                </div>
+
+                <div class="jrnl-field">
+                    <label>Primary mood</label>
+                    <select class="input" @bind="filterPrimaryCategory">
+                        <option value="">All</option>
+                        <option value="Positive">Positive</option>
+                        <option value="Neutral">Neutral</option>
+                        <option value="Negative">Negative</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="jrnl-tags">
+                <div class="jrnl-tags-title">Tags</div>
+                <div class="jrnl-pills">
+                    @foreach (var t in tags)
+                    {
+                        <button type="button"
+                                class="jrnl-pill @(filterTagIds.Contains(t.TagId) ? "active" : "")"
+                                @onclick='() => ToggleFilterTag(t.TagId)'>
+                            @t.Tagname
+                        </button>
+                    }
+                </div>
+            </div>
+
+            <div class="jrnl-filter-foot">
+                <div class="muted">Filtered results</div>
+                <div class="jrnl-count">@FilteredEntries.Count</div>
+            </div>
+        </div>
+    }
+
+    <!-- ===================== ADD / EDIT FORM ===================== -->
+    @if (showForm)
+    {
+        <div class="jrnl-editor">
+            <div class="jrnl-editor-head">
+                <div>
+                    <div class="jrnl-panel-title">@((isEditing) ? "Edit entry" : "New entry")</div>
+                    <div class="jrnl-panel-sub muted">Write content, then set mood and tags.</div>
+                </div>
+                <button class="jrnl-btn jrnl-btn-ghost" type="button" @onclick="CancelForm">Close</button>
+            </div>
+
+            @if (currentUser == null)
+            {
+                <p class="hint">No user found. Create a user first.</p>
+            }
+            else
+            {
+                <div class="jrnl-userbar">
+                    <span class="jrnl-user-ic">👤</span>
+                    <span><b>User:</b> @currentUser.Username</span>
+                </div>
+
+                <div class="jrnl-editor-grid">
+                    <div class="jrnl-editor-main">
+                        <label>Title</label>
+                        <input class="input" @bind="entry.Title" />
+
+                        <label style="margin-top:12px;">Content *</label>
+                        <div class="jrnl-quill">
+                            <div id="journal-quill" class="quill-editor"></div>
+                        </div>
+
+                        <div class="hint">Formatting: bold / italic / lists / headers / links.</div>
+
+                        @if (!string.IsNullOrEmpty(errorMessage))
+                        {
+                            <div class="error-message">@errorMessage</div>
+                        }
+
+                        <div class="jrnl-editor-actions">
+                            <button class="btn-save" type="button" @onclick="SaveEntry">Save</button>
+                            <button class="btn-cancel" type="button" @onclick="CancelForm">Discard</button>
+                        </div>
+                    </div>
+
+                    <div class="jrnl-editor-side">
+                        <div class="jrnl-side-card">
+                            <div class="jrnl-side-title">Primary mood *</div>
+                            <div class="jrnl-pills">
+                                <button type="button"
+                                        class="jrnl-pill jrnl-pill-soft @(primaryMoodCategory == "Positive" ? "active" : "")"
+                                        @onclick='() => SetPrimaryCategory("Positive")'>
+                                    Positive
+                                </button>
+                                <button type="button"
+                                        class="jrnl-pill jrnl-pill-soft @(primaryMoodCategory == "Neutral" ? "active" : "")"
+                                        @onclick='() => SetPrimaryCategory("Neutral")'>
+                                    Neutral
+                                </button>
+                                <button type="button"
+                                        class="jrnl-pill jrnl-pill-soft @(primaryMoodCategory == "Negative" ? "active" : "")"
+                                        @onclick='() => SetPrimaryCategory("Negative")'>
+                                    Negative
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="jrnl-side-card">
+                            <div class="jrnl-side-title">Secondary moods</div>
+                            <div class="jrnl-side-sub muted">Pick up to 2</div>
+
+                            @if (string.IsNullOrWhiteSpace(primaryMoodCategory))
+                            {
+                                <div class="hint">Select a primary mood first.</div>
+                            }
+                            else
+                            {
+                                <div class="jrnl-pills">
+                                    @foreach (var m in SecondaryCategoryMoods)
+                                    {
+                                        <button type="button"
+                                                class="jrnl-pill @(secondaryMoodIds.Contains(m.MoodId) ? "active" : "")"
+                                                @onclick='() => ToggleSecondaryMood(m.MoodId)'>
+                                            @m.MoodName
+                                        </button>
+                                    }
+                                </div>
+
+                                <div class="jrnl-mini muted">Selected: <b>@secondaryMoodIds.Count</b> / 2</div>
+                            }
+                        </div>
+
+                        <div class="jrnl-side-card">
+                            <div class="jrnl-side-title">Tags</div>
+                            <div class="jrnl-side-sub muted">Pick up to 10</div>
+
+                            <div class="jrnl-pills">
+                                @foreach (var t in tags)
+                                {
+                                    <button type="button"
+                                            class="jrnl-pill jrnl-pill-tag @(selectedTagIds.Contains(t.TagId) ? "active" : "")"
+                                            @onclick='() => ToggleTag(t.TagId)'>
+                                        @t.Tagname
+                                    </button>
+                                }
+                            </div>
+
+                            <div class="jrnl-mini muted">Selected: <b>@selectedTagIds.Count</b> / 10</div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
+    <!-- ===================== LIST ===================== -->
+    <div class="jrnl-list">
+        <div class="jrnl-list-head">
+            <div>
+                <div class="jrnl-panel-title">Entries</div>
+                <div class="jrnl-panel-sub muted">Showing <b>@FilteredEntries.Count</b> result(s).</div>
+            </div>
+
+            <div class="jrnl-list-meta">
+                <span class="jrnl-chip">Page @currentPage / @TotalPages</span>
+            </div>
+        </div>
+
+        @if (entries == null)
+        {
+            <p class="hint">Loading journals...</p>
+        }
+        else if (entries.Count == 0)
+        {
+            <p class="hint">No journals found. Add your first journal!</p>
+        }
+        else if (FilteredEntries.Count == 0)
+        {
+            <p class="hint">No results match the current filters.</p>
+        }
+        else
+        {
+            <div class="jrnl-table-wrap">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Title</th>
+                            <th>Preview</th>
+                            <th>Date</th>
+                            <th>Words</th>
+                            <th style="width:180px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var e in PagedEntries)
+                        {
+                            <tr>
+                                <td class="jrnl-td-title">@e.Title</td>
+                                <td class="jrnl-td-preview" title="@StripHtml(e.Content)">
+                                    @Truncate(StripHtml(e.Content), 80)
+                                </td>
+                                <td>@e.EntryDate.ToString("yyyy-MM-dd")</td>
+                                <td>@e.WordCount</td>
+                                <td>
+                                    <div class="jrnl-row-actions">
+                                        <button class="btn-edit" type="button" @onclick="() => EditEntryAsync(e)">Edit</button>
+                                        <button class="btn-delete" type="button" @onclick="() => DeleteEntryAsync(e)">Delete</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            @if (TotalPages > 1)
+            {
+                <div class="jrnl-pager">
+                    <button class="jrnl-page"
+                            disabled="@(currentPage == 1)"
+                            @onclick="() => ChangePage(currentPage - 1)">
+                        ◀ Prev
+                    </button>
+
+                    <div class="jrnl-page-nums">
+                        @for (int i = 1; i <= TotalPages; i++)
+                        {
+                            <button class="jrnl-page @(i == currentPage ? "active" : "")"
+                                    @onclick="() => ChangePage(i)">
+                                @i
+                            </button>
+                        }
+                    </div>
+
+                    <button class="jrnl-page"
+                            disabled="@(currentPage == TotalPages)"
+                            @onclick="() => ChangePage(currentPage + 1)">
+                        Next ▶
+                    </button>
+                </div>
+            }
+        }
+    </div>
+
+</div>
+
+@code {
+    // Data
+    List<User> users = new();
+    User? currentUser;
+
+    List<Mood> moods = new();
+    List<Tag> tags = new();
+    List<JournalEntry> entries = new();
+
+    // Filter caches
+    Dictionary<int, string> primaryCategoryByEntryId = new();
+    Dictionary<int, HashSet<int>> tagIdsByEntryId = new();
+
+    // Filters
+    string searchText = "";
+    DateTime? filterFrom;
+    DateTime? filterTo;
+    string filterPrimaryCategory = "";
+    HashSet<int> filterTagIds = new();
+
+    // Form state
+    JournalEntry entry = new();
+    bool showForm;
+    bool isEditing;
+    string errorMessage = "";
+
+    string primaryMoodCategory = "";
+    int primaryMoodId;
+
+    List<int> secondaryMoodIds = new();
+    List<int> selectedTagIds = new();
+
+    StreakStats streakStats = new();
+    bool _quillReady;
+
+    int currentPage = 1;
+    const int pageSize = 10;
+
+    // ✅ Reload whole page (MAUI Blazor Hybrid)
+    void ForceReload() => Nav.NavigateTo(Nav.Uri, forceLoad: true);
+
+    List<JournalEntry> FilteredEntries => ApplyFilters(entries);
+
+    int TotalPages =>
+        FilteredEntries.Count == 0
+            ? 1
+            : (int)Math.Ceiling(FilteredEntries.Count / (double)pageSize);
+
+    IEnumerable<JournalEntry> PagedEntries =>
+        FilteredEntries
+            .OrderByDescending(e => e.EntryDate)
+            .ThenByDescending(e => e.EntryId)
+            .Skip((currentPage - 1) * pageSize)
+            .Take(pageSize);
+
+    List<Mood> SecondaryCategoryMoods =>
+        string.IsNullOrWhiteSpace(primaryMoodCategory)
+            ? new List<Mood>()
+            : moods.Where(m => m.MoodCategory == primaryMoodCategory)
+                   .OrderBy(m => m.MoodId)
+                   .ToList();
+
+    int WordsToday =>
+        entries.FirstOrDefault(x => x.EntryDate.Date == DateTime.UtcNow.Date)?.WordCount ?? 0;
+
+    int EntriesThisWeek
+    {
+        get
+        {
+            var today = DateTime.UtcNow.Date;
+            int diff = (7 + (int)today.DayOfWeek - (int)DayOfWeek.Monday) % 7;
+            var weekStart = today.AddDays(-diff);
+            return entries.Count(e => e.EntryDate.Date >= weekStart && e.EntryDate.Date <= today);
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await UserService.InitializeAsync();
+        await MoodService.InitializeAsync();
+        await TagService.InitializeAsync();
+        await JournalEntryService.InitializeAsync();
+
+        users = await UserService.GetUsersAsync();
+        currentUser = users.FirstOrDefault();
+
+        moods = await MoodService.GetMoodsAsync();
+        tags = await TagService.GetTagsAsync();
+
+        await ReloadAllAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (showForm && !_quillReady)
+        {
+            await JS.InvokeVoidAsync("createQuill", "journal-quill", entry.Content ?? "");
+            _quillReady = true;
+        }
+    }
+
+    async Task ReloadEntriesAsync()
+    {
+        entries = await JournalEntryService.GetAllEntriesAsync();
+        currentPage = 1;
+    }
+
+    async Task ReloadAllAsync()
+    {
+        await ReloadEntriesAsync();
+
+        if (currentUser != null)
+            streakStats = await JournalEntryService.GetStreakStatsAsync(currentUser.UserId);
+
+        await BuildFilterCachesAsync();
+        StateHasChanged();
+    }
+
+    async Task BuildFilterCachesAsync()
+    {
+        primaryCategoryByEntryId.Clear();
+        tagIdsByEntryId.Clear();
+
+        if (entries.Count == 0) return;
+
+        foreach (var e in entries)
+        {
+            var moodList = await JournalEntryService.GetEntryMoodsAsync(e.EntryId);
+            var primaryId = moodList.FirstOrDefault(x => x.MoodType == "Primary")?.MoodId ?? 0;
+
+            primaryCategoryByEntryId[e.EntryId] =
+                primaryId == 1 ? "Positive" :
+                primaryId == 2 ? "Neutral" :
+                primaryId == 3 ? "Negative" : "";
+
+            var tagList = await JournalEntryService.GetEntryTagsAsync(e.EntryId);
+            tagIdsByEntryId[e.EntryId] = tagList.Select(x => x.TagId).ToHashSet();
+        }
+    }
+
+    List<JournalEntry> ApplyFilters(List<JournalEntry> source)
+    {
+        IEnumerable<JournalEntry> q = source;
+
+        if (filterFrom.HasValue)
+        {
+            var f = filterFrom.Value.Date;
+            q = q.Where(e => e.EntryDate.Date >= f);
+        }
+
+        if (filterTo.HasValue)
+        {
+            var t = filterTo.Value.Date;
+            q = q.Where(e => e.EntryDate.Date <= t);
+        }
+
+        var s = (searchText ?? "").Trim();
+        if (!string.IsNullOrWhiteSpace(s))
+        {
+            q = q.Where(e =>
+            {
+                var title = e.Title ?? "";
+                var content = StripHtml(e.Content);
+                return title.Contains(s, StringComparison.OrdinalIgnoreCase)
+                    || content.Contains(s, StringComparison.OrdinalIgnoreCase);
+            });
+        }
+
+        var cat = (filterPrimaryCategory ?? "").Trim();
+        if (!string.IsNullOrWhiteSpace(cat))
+        {
+            q = q.Where(e =>
+                primaryCategoryByEntryId.TryGetValue(e.EntryId, out var c) && c == cat);
+        }
+
+        // ALL selected tags must exist in the entry
+        if (filterTagIds.Count > 0)
+        {
+            q = q.Where(e =>
+            {
+                if (!tagIdsByEntryId.TryGetValue(e.EntryId, out var set)) return false;
+                return filterTagIds.All(tid => set.Contains(tid));
+            });
+        }
+
+        return q.ToList();
+    }
+
+    void ChangePage(int page)
+    {
+        if (page < 1 || page > TotalPages) return;
+        currentPage = page;
+    }
+
+    void ClearFilters()
+    {
+        searchText = "";
+        filterFrom = null;
+        filterTo = null;
+        filterPrimaryCategory = "";
+        filterTagIds.Clear();
+        currentPage = 1;
+    }
+
+    void ToggleFilterTag(int tagId)
+    {
+        if (filterTagIds.Contains(tagId)) filterTagIds.Remove(tagId);
+        else filterTagIds.Add(tagId);
+
+        currentPage = 1;
+    }
+
+    void SetPrimaryCategory(string category)
+    {
+        primaryMoodCategory = category;
+        var primary = moods.FirstOrDefault(m => m.MoodCategory == "Category" && m.MoodName == category);
+        primaryMoodId = primary?.MoodId ?? 0;
+        secondaryMoodIds.Clear();
+    }
+
+    void ToggleSecondaryMood(int moodId)
+    {
+        var mood = moods.FirstOrDefault(m => m.MoodId == moodId);
+        if (mood == null) return;
+        if (mood.MoodCategory != primaryMoodCategory) return;
+
+        if (secondaryMoodIds.Contains(moodId)) { secondaryMoodIds.Remove(moodId); return; }
+        if (secondaryMoodIds.Count >= 2) return;
+        secondaryMoodIds.Add(moodId);
+    }
+
+    void ToggleTag(int tagId)
+    {
+        if (selectedTagIds.Contains(tagId)) { selectedTagIds.Remove(tagId); return; }
+        if (selectedTagIds.Count >= 10) return;
+        selectedTagIds.Add(tagId);
+    }
+
+    void ShowAddForm()
+    {
+        if (currentUser == null) return;
+
+        entry = new JournalEntry { UserId = currentUser.UserId };
+
+        primaryMoodCategory = "";
+        primaryMoodId = 0;
+        secondaryMoodIds.Clear();
+        selectedTagIds.Clear();
+
+        showForm = true;
+        isEditing = false;
+        errorMessage = "";
+        _quillReady = false;
+    }
+
+    async Task SaveEntry()
+    {
+        errorMessage = "";
+        if (currentUser == null) { errorMessage = "No user found."; return; }
+
+        entry.UserId = currentUser.UserId;
+        entry.Content = await JS.InvokeAsync<string>("getQuillHtml", "journal-quill") ?? "";
+
+        if (string.IsNullOrWhiteSpace(StripHtml(entry.Content))) { errorMessage = "Content is required."; return; }
+        if (string.IsNullOrWhiteSpace(primaryMoodCategory)) { errorMessage = "Primary mood is required."; return; }
+        if (primaryMoodId == 0) { errorMessage = "Primary mood category is not seeded."; return; }
+
+        secondaryMoodIds = secondaryMoodIds.Distinct().Take(2).ToList();
+
+        try
+        {
+            await JournalEntryService.SaveEntryAsync(entry);
+
+            if (entry.EntryId == 0)
+            {
+                var inserted = (await JournalEntryService.GetEntriesAsync(entry.UserId))
+                    .OrderByDescending(x => x.EntryId)
+                    .FirstOrDefault();
+                if (inserted != null) entry.EntryId = inserted.EntryId;
+            }
+
+            await JournalEntryService.SaveEntryMoodsAsync(entry.EntryId, primaryMoodId, secondaryMoodIds);
+            await JournalEntryService.SaveEntryTagsAsync(entry.EntryId, selectedTagIds);
+
+            // ✅ Force reload after save
+            CancelForm();
+            ForceReload();
+        }
+        catch (Exception ex) { errorMessage = ex.Message; }
+    }
+
+    async Task EditEntryAsync(JournalEntry e)
+    {
+        entry = e;
+        showForm = true;
+        isEditing = true;
+        errorMessage = "";
+
+        var moodsList = await JournalEntryService.GetEntryMoodsAsync(e.EntryId);
+        primaryMoodId = moodsList.FirstOrDefault(m => m.MoodType == "Primary")?.MoodId ?? 0;
+
+        primaryMoodCategory =
+            primaryMoodId == 1 ? "Positive" :
+            primaryMoodId == 2 ? "Neutral" :
+            primaryMoodId == 3 ? "Negative" : "";
+
+        secondaryMoodIds = moodsList
+            .Where(m => m.MoodType == "Secondary")
+            .Select(m => m.MoodId)
+            .Distinct()
+            .Take(2)
+            .ToList();
+
+        selectedTagIds = (await JournalEntryService.GetEntryTagsAsync(e.EntryId))
+            .Select(t => t.TagId)
+            .ToList();
+
+        _quillReady = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    async Task DeleteEntryAsync(JournalEntry e)
+    {
+        await JournalEntryService.DeleteEntryAsync(e);
+
+        // ✅ Force reload after delete
+        ForceReload();
+    }
+
+    void CancelForm()
+    {
+        showForm = false;
+        entry = new JournalEntry { UserId = currentUser?.UserId ?? 0 };
+
+        primaryMoodCategory = "";
+        primaryMoodId = 0;
+        secondaryMoodIds.Clear();
+        selectedTagIds.Clear();
+
+        isEditing = false;
+        errorMessage = "";
+        _quillReady = false;
+    }
+
+    static string Truncate(string s, int max)
+        => string.IsNullOrEmpty(s) ? "" : (s.Length > max ? s.Substring(0, max) + "..." : s);
+
+    static string StripHtml(string? html)
+    {
+        if (string.IsNullOrWhiteSpace(html)) return "";
+
+        var chars = html.ToCharArray();
+        var result = new System.Text.StringBuilder(html.Length);
+        bool inside = false;
+
+        foreach (var c in chars)
+        {
+            if (c == '<') { inside = true; continue; }
+            if (c == '>') { inside = false; continue; }
+            if (!inside) result.Append(c);
+        }
+
+        return System.Net.WebUtility.HtmlDecode(result.ToString())
+            .Replace('\u00A0', ' ')
+            .Trim();
+    }
+}

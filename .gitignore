@@ -1,0 +1,86 @@
+############################################
+# .NET / Visual Studio
+############################################
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.rsuser
+
+.vs/
+.idea/
+*.log
+
+############################################
+# Build results
+############################################
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+ARM/
+ARM64/
+
+############################################
+# MAUI / Xamarin
+############################################
+*.apk
+*.aab
+*.ipa
+*.app
+*.msix
+*.msixbundle
+*.appx
+*.appxbundle
+
+############################################
+# Android
+############################################
+**/Android/bin/
+**/Android/obj/
+**/*.keystore
+**/*.jks
+local.properties
+
+############################################
+# iOS / MacCatalyst
+############################################
+**/iOS/bin/
+**/iOS/obj/
+**/MacCatalyst/bin/
+**/MacCatalyst/obj/
+*.xcuserstate
+*.xcworkspace
+DerivedData/
+
+############################################
+# Windows / WinUI
+############################################
+**/Windows/bin/
+**/Windows/obj/
+*.pfx
+
+############################################
+# Blazor / Web
+############################################
+wwwroot/lib/
+wwwroot/dist/
+node_modules/
+
+############################################
+# User secrets / sensitive
+############################################
+appsettings.Development.json
+appsettings.Local.json
+secrets.json
+
+############################################
+# OS files
+############################################
+.DS_Store
+Thumbs.db
+desktop.ini

@@ -1,0 +1,87 @@
+﻿@page "/moods"
+@using Journal.Models
+@using Journal.Services
+@inject MoodService MoodService
+
+<div class="md-shell">
+
+    <!-- ===================== HEADER ===================== -->
+    <div class="md-head">
+        <div class="md-title">
+            <div class="md-kicker">Reference</div>
+            <h2 class="md-h1">Moods</h2>
+            <div class="md-sub muted">Predefined moods used for journaling & analytics.</div>
+        </div>
+
+        <div class="md-stats">
+            <div class="md-stat">
+                <div class="md-stat-label">Total</div>
+                <div class="md-stat-value">@((moods == null) ? 0 : moods.Count)</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================== CONTENT ===================== -->
+    <div class="md-card">
+        @if (moods == null)
+        {
+            <p class="hint">Loading moods...</p>
+        }
+        else if (moods.Count == 0)
+        {
+            <p class="hint">No moods found.</p>
+        }
+        else
+        {
+            <!-- quick grouping chips (UI only, no logic change) -->
+            <div class="md-chips">
+                <span class="md-chip">Category</span>
+                <span class="md-chip">Positive</span>
+                <span class="md-chip">Neutral</span>
+                <span class="md-chip">Negative</span>
+            </div>
+
+            <div class="md-table-wrap">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th style="width:90px;">ID</th>
+                            <th>Mood</th>
+                            <th style="width:180px;">Category</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var m in moods)
+                        {
+                            <tr>
+                                <td class="md-id">@m.MoodId</td>
+                                <td class="md-name">@m.MoodName</td>
+                                <td>
+                                    <span class="md-badge @(m.MoodCategory == "Positive" ? "pos" :
+                                                                                                   m.MoodCategory == "Neutral" ? "neu" :
+                                                                                                   m.MoodCategory == "Negative" ? "neg" : "cat")">
+                                        @m.MoodCategory
+                                    </span>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="md-foot muted">
+                Tip: These are seeded moods (read-only).
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    List<Mood> moods = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await MoodService.InitializeAsync();
+        moods = await MoodService.GetMoodsAsync();
+    }
+}

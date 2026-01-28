@@ -1,0 +1,314 @@
+﻿@page "/analytics"
+
+@using Journal.Models
+@using Journal.Services
+
+@inject UserService UserService
+@inject JournalEntryService JournalEntryService
+@inject AnalyticsService AnalyticsService
+@inject IJSRuntime JS
+
+<div class="an-shell">
+
+    <!-- ===================== HEADER ===================== -->
+    <div class="an-head">
+        <div class="an-title">
+            <div class="an-kicker">Insights</div>
+            <h2 class="an-h1">Analytics</h2>
+            <div class="an-sub muted">Track moods, tags, and writing trends in your selected range.</div>
+        </div>
+
+        <div class="an-range-card">
+            <div class="an-range-row">
+                <div class="an-field">
+                    <label>From</label>
+                    <input type="date" class="input"
+                           @bind-value="FromDate"
+                           @bind-value:format="yyyy-MM-dd" />
+                </div>
+
+                <div class="an-field">
+                    <label>To</label>
+                    <input type="date" class="input"
+                           @bind-value="ToDate"
+                           @bind-value:format="yyyy-MM-dd" />
+                </div>
+
+                <button class="btn-save an-apply" type="button" @onclick="ApplyRange">Apply</button>
+            </div>
+
+            <div class="an-quick">
+                <button class="btn-chip" type="button" @onclick="() => SetQuickRange(7)">Last 7 days</button>
+                <button class="btn-chip" type="button" @onclick="() => SetQuickRange(30)">Last 30 days</button>
+                <button class="btn-chip" type="button" @onclick="() => SetQuickRange(90)">Last 90 days</button>
+            </div>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(error))
+    {
+        <div class="error-message">@error</div>
+    }
+
+    @if (currentUser == null)
+    {
+        <div class="form-box">
+            <p class="hint">No user found. Create a user first.</p>
+        </div>
+    }
+    else if (data == null)
+    {
+        <div class="form-box">
+            <p class="hint">Loading analytics...</p>
+        </div>
+    }
+    else
+    {
+        <!-- ===================== KPI STRIP ===================== -->
+        <div class="an-kpis">
+            <div class="an-kpi">
+                <div class="an-kpi-ic">🗂️</div>
+                <div class="an-kpi-meta">
+                    <div class="an-kpi-label">Entries in range</div>
+                    <div class="an-kpi-val">@data.TotalEntries</div>
+                    <div class="an-kpi-sub">@data.FromDate:yyyy-MM-dd → @data.ToDate:yyyy-MM-dd</div>
+                </div>
+            </div>
+
+            <div class="an-kpi">
+                <div class="an-kpi-ic">😊</div>
+                <div class="an-kpi-meta">
+                    <div class="an-kpi-label">Top mood</div>
+                    <div class="an-kpi-val">@data.MostFrequentMood</div>
+                    <div class="an-kpi-sub">From secondary moods</div>
+                </div>
+            </div>
+
+            <div class="an-kpi">
+                <div class="an-kpi-ic">🔥</div>
+                <div class="an-kpi-meta">
+                    <div class="an-kpi-label">Current streak</div>
+                    <div class="an-kpi-val">@data.CurrentStreak day(s)</div>
+                    <div class="an-kpi-sub">Global streak</div>
+                </div>
+            </div>
+
+            <div class="an-kpi">
+                <div class="an-kpi-ic">🏆</div>
+                <div class="an-kpi-meta">
+                    <div class="an-kpi-label">Longest streak</div>
+                    <div class="an-kpi-val">@data.LongestStreak day(s)</div>
+                    <div class="an-kpi-sub">Global max</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===================== CHARTS ===================== -->
+        <div class="an-grid">
+            <div class="chart-card">
+                <div class="an-card-head">
+                    <div>
+                        <div class="an-card-title">Mood distribution</div>
+                        <div class="an-card-sub muted">Primary mood ratio in the range.</div>
+                    </div>
+                    <div class="an-badge">Doughnut</div>
+                </div>
+                <div class="an-chart-wrap">
+                    <canvas id="moodChart" class="chart-canvas"></canvas>
+                </div>
+            </div>
+
+            <div class="chart-card">
+                <div class="an-card-head">
+                    <div>
+                        <div class="an-card-title">Most used tags</div>
+                        <div class="an-card-sub muted">Top tags across entries.</div>
+                    </div>
+                    <div class="an-badge">Bar</div>
+                </div>
+                <div class="an-chart-wrap">
+                    <canvas id="tagChart" class="chart-canvas"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="chart-card">
+            <div class="an-card-head">
+                <div>
+                    <div class="an-card-title">Word count trend</div>
+                    <div class="an-card-sub muted">Average words per day (trend).</div>
+                </div>
+                <div class="an-badge">Line</div>
+            </div>
+            <div class="an-chart-wrap an-chart-wrap-wide">
+                <canvas id="wordChart" class="chart-canvas an-canvas-wide"></canvas>
+            </div>
+        </div>
+
+        <!-- ===================== BREAKDOWN ===================== -->
+        <div class="an-bottom">
+            <div class="form-box an-box">
+                <div class="an-box-head">
+                    <h3 class="an-h3">Tag breakdown</h3>
+                    <div class="muted">Percent of entries in range</div>
+                </div>
+
+                @if (data.TagBreakdown.Count == 0)
+                {
+                    <p class="hint">No tags found in this range.</p>
+                }
+                else
+                {
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Tag</th>
+                                <th>Entries</th>
+                                <th>%</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var t in data.TagBreakdown)
+                            {
+                                <tr>
+                                    <td>@t.TagName</td>
+                                    <td>@t.EntriesCount</td>
+                                    <td>@t.Percent%</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+
+            <div class="form-box an-box">
+                <div class="an-box-head">
+                    <h3 class="an-h3">Missed days</h3>
+                    <div class="muted">Days without an entry</div>
+                </div>
+
+                @if (data.MissedDaysInRange.Count == 0)
+                {
+                    <p class="hint">No missed days in this range 🎉</p>
+                }
+                else
+                {
+                    <div class="missed-list">
+                        @foreach (var d in data.MissedDaysInRange)
+                        {
+                            <div class="missed-item">@d.ToString("yyyy-MM-dd")</div>
+                        }
+                    </div>
+                    <p class="hint">Total missed: <b>@data.MissedDaysInRange.Count</b></p>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    User? currentUser;
+    AnalyticsResult? data;
+    string error = "";
+
+    DateTime? FromDate;
+    DateTime? ToDate;
+
+    bool _chartsRenderedOnce = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await UserService.InitializeAsync();
+        await JournalEntryService.InitializeAsync();
+        await AnalyticsService.InitializeAsync();
+
+        currentUser = (await UserService.GetUsersAsync()).FirstOrDefault();
+        if (currentUser == null) return;
+
+        var to = DateTime.UtcNow.Date;
+        var from = to.AddDays(-29);
+
+        FromDate = from;
+        ToDate = to;
+
+        await LoadAnalyticsAsync(from, to);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (data != null && !_chartsRenderedOnce)
+        {
+            await RenderChartsAsync();
+            _chartsRenderedOnce = true;
+        }
+    }
+
+    async Task ApplyRange()
+    {
+        error = "";
+        if (currentUser == null) return;
+
+        if (FromDate == null || ToDate == null)
+        {
+            error = "Select both From and To dates.";
+            return;
+        }
+
+        await LoadAnalyticsAsync(FromDate.Value, ToDate.Value);
+        _chartsRenderedOnce = false;
+        StateHasChanged();
+    }
+
+    async Task SetQuickRange(int days)
+    {
+        if (currentUser == null) return;
+
+        var to = DateTime.UtcNow.Date;
+        var from = to.AddDays(-(days - 1));
+
+        FromDate = from;
+        ToDate = to;
+
+        await LoadAnalyticsAsync(from, to);
+        _chartsRenderedOnce = false;
+        StateHasChanged();
+    }
+
+    async Task LoadAnalyticsAsync(DateTime from, DateTime to)
+    {
+        if (currentUser == null) return;
+
+        data = await AnalyticsService.GetAnalyticsAsync(
+            currentUser.UserId,
+            from,
+            to,
+            JournalEntryService
+        );
+    }
+
+    async Task RenderChartsAsync()
+    {
+        if (data == null) return;
+
+        var moodLabels = data.MoodDistribution.Keys.ToList();
+        var moodValues = data.MoodDistribution.Values.ToList();
+
+        var tagLabels = data.MostUsedTags.Select(x => x.TagName).ToList();
+        var tagValues = data.MostUsedTags.Select(x => x.Count).ToList();
+
+        var wordLabels = data.WordCountTrends.Select(x => x.Date.ToString("MM-dd")).ToList();
+        var wordValues = data.WordCountTrends.Select(x => x.AvgWords).ToList();
+
+        var payload = new
+        {
+            moodLabels,
+            moodValues,
+            tagLabels,
+            tagValues,
+            wordLabels,
+            wordValues
+        };
+
+        await JS.InvokeVoidAsync("logbookCharts.renderOrUpdate", payload);
+    }
+}
